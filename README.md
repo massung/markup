@@ -23,7 +23,7 @@ Likewise, `markup-decode` will perform the inverse.
 
 The `markup-decode` function also takes an optional *entities* keyword argument. This allows for passing in of document-specific entities. There are already a plethora of common entities that are tested against when decoding, but (XML for example) some markup languages allow the user to define their own entities. If passed in, document entities take priority.
 
-    CL-USER > (markup-decode "&bull; Item 1.a. is &cool;" :entities '(("cool" "AWESOME!")))
-    "• Item 1.a. is (AWESOME!)"
+    CL-USER > (markup-decode "&bull; Item 1.a. is &cool;" :entities '(("cool" . "AWESOME!")))
+    "• Item 1.a. is AWESOME!"
 
 That's it!

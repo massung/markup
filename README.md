@@ -26,4 +26,16 @@ The `markup-decode` function also takes an optional *entities* keyword argument.
     CL-USER > (markup-decode "&bull; Item 1.a. is &cool;" :entities '(("cool" . "AWESOME!")))
     "• Item 1.a. is AWESOME!"
 
+## Customizing Entity References
+
+Different markup languages use different predicates for what make up a valid entity reference character. You can override the predicates used with the special variables `*markup-entity-start-char-p*` and `*markup-entity-char-p*`.
+
+*Note: by default, these two variables default to `alpha-char-p`.*
+
+Simply set these to what you'd like them to be for your markup language and then decode the markup. For example:
+
+    (let ((*markup-entity-start-char-p* 'xml-name-char-p)
+          (*markup-entity-char-p* 'xml-token-char-p))
+      (markup-decode "&my-valid.xml:entity;"))
+
 That's it!

@@ -20,6 +20,12 @@
 (defpackage :markup
   (:use :cl :parse :re :lexer)
   (:export
+
+   ;; parsing predicates
+   #:*markup-entity-char-p*
+   #:*markup-entity-start-char-p*
+
+   ;; encoding and decoding
    #:markup-encode
    #:markup-decode))
 
@@ -27,52 +33,29 @@
 
 ;;; ----------------------------------------------------
 
+(defparameter *markup-entity-start-char-p* 'alpha-char-p
+  "Predicate for start character of an entity reference.")
+
+;;; ----------------------------------------------------
+
+(defparameter *markup-entity-char-p* 'alpha-char-p
+  "Predicate for subsequent characters of an entity reference.")
+
+;;; ----------------------------------------------------
+
+(defun entity-start-char-p (c)
+  "T if the character is a valid start character in an entity reference."
+  (funcall *markup-entity-start-char-p* c))
+
+;;; ----------------------------------------------------
+
 (defun entity-char-p (c)
-  "T if the character begins a valid XML name."
-  (or (char= c #\:)
-      (char= c #\_)
-
-      ;; any ascii letter
-      (char<= #\A c #\Z)
-      (char<= #\a c #\z)
-
-      ;; acceptable unicode character ranges
-      (char<= #\u+00C0 c #\u+00D6)
-      (char<= #\u+00D8 c #\u+00F6)
-      (char<= #\u+00F8 c #\u+02FF)
-      (char<= #\u+0370 c #\u+037D)
-      (char<= #\u+037F c #\u+1FFF)
-      (char<= #\u+200C c #\u+200D)
-      (char<= #\u+2070 c #\u+218F)
-      (char<= #\u+2C00 c #\u+2FEF)
-      (char<= #\u+3001 c #\u+D7FF)
-      (char<= #\u+F900 c #\u+FDCF)
-      (char<= #\u+FDF0 c #\u+FFFD)
-
-      ;; extended, UTF characters
-      (char<= #\u+10000 c #\u+EFFFF)))
+  "T if the character is a valid character in an entity reference."
+  (funcall *markup-entity-char-p* c))
 
 ;;; ----------------------------------------------------
 
-(defun entity-letter-p (c)
-  "T if the character is a valid XML name character."
-  (or (entity-char-p c)
-
-      ;; one-off characters
-      (char= c #\-)
-      (char= c #\.)
-      (char= c #\u+00b7)
-
-      ;; digits
-      (char<= #\0 c #\9)
-
-      ;; unicode character ranges
-      (char<= #\u+0300 c #\u+036F)
-      (char<= #\u+203F c #\u+2040)))
-
-;;; ----------------------------------------------------
-
-(defun entity-ref (name &key entities)
+(defun entity-ref (name &optional doc-entities)
   "Returns the character for a given entity name."
   (let ((common-entities '(("lt"       . #\<)
                            ("gt"       . #\>)
@@ -332,11 +315,8 @@
                            ("diams"    . #\u+2666))))
 
     ;; lookup the entity character from the entity lists
-    (or (cdr (assoc name entities :test #'string=))
-        (cdr (assoc name common-entities :test #'string=))
-
-        ;; entity not found, warn and return nil
-        (warn "Unknown entity ~s; skipping..." name))))
+    (or (cdr (assoc name doc-entities :test #'string=))
+        (cdr (assoc name common-entities :test #'string=)))))
 
 ;;; ----------------------------------------------------
 
@@ -347,7 +327,7 @@
   ("&#(%d+);" (values :char-ref (parse-integer $1 :radix 10)))
 
   ;; entity references
-  ("&(%:entity-char-p:%:entity-letter-p:*);" (values :entity-ref $1))
+  ("&(%:entity-start-char-p:%:entity-char-p:*);" (values :entity-ref $1))
 
   ;; anything else (including malformed references)
   (".[^&]*" (values :text $$)))
@@ -356,19 +336,37 @@
 
 (define-parser markup-parser
   "Parse references from a string and return a list of values."
-  (.let (cs (.many (.or (.is :text)
-
-                        ;; expand character references
-                        (.let (ref (.is :char-ref))
-                          (.ret (code-char ref)))
-
-                        ;; expand entity references
-                        (.let* ((ref (.is :entity-ref))
-                                (refs (.get)))
-                          (.ret (entity-ref ref :entities refs))))))
-
-    ;; join everything together nicely
+  (.let (cs (.many (.either (.is :text) 'ref-parser)))
     (.ret (format nil "~{~a~}" cs))))
+
+;;; ----------------------------------------------------
+
+(define-parser ref-parser
+  "Parse a character or entity reference."
+  (.or (.let (ref (.is :char-ref))
+         (.ret (code-char ref)))
+
+       ;; entity references need to recursively expand
+       (.let* ((ref (.is :entity-ref))
+
+               ;; get the document entities
+               (doc-entities (.get)))
+
+         ;; try and expand the reference
+         (let ((value (entity-ref ref doc-entities)))
+           (typecase value
+
+             ;; unknown entity, just return the entity name
+             (null      (.ret ref))
+
+             ;; characters just return themselves
+             (character (.ret value))
+
+             ;; strings can have markup inside them, recursively decode
+             (string    (.ret (markup-decode value :entities doc-entities)))
+
+             ;; everything else should princ to a value
+             (otherwise (.ret (princ-to-string value))))))))
 
 ;;; ----------------------------------------------------
 
@@ -399,4 +397,3 @@
   (with-lexer (lexer 'markup-lexer str)
     (with-token-reader (next-token lexer)
       (parse 'markup-parser next-token :initial-state entities))))
-

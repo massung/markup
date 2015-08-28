@@ -55,7 +55,7 @@
 
 ;;; ----------------------------------------------------
 
-(defun entity-ref (name &optional doc-entities)
+(defun entity-ref (name)
   "Returns the character for a given entity name."
   (let ((common-entities '(("lt"       . #\<)
                            ("gt"       . #\>)
@@ -314,9 +314,8 @@
                            ("hearts"   . #\u+2665)
                            ("diams"    . #\u+2666))))
 
-    ;; lookup the entity character from the entity lists
-    (or (cdr (assoc name doc-entities :test #'string=))
-        (cdr (assoc name common-entities :test #'string=)))))
+    ;; lookup the entity from the default list
+    (cdr (assoc name common-entities :test #'string=))))
 
 ;;; ----------------------------------------------------
 
@@ -350,10 +349,12 @@
        (.let* ((ref (.is :entity-ref))
 
                ;; get the document entities
-               (doc-entities (.get)))
+               (entity-callback (.get)))
 
          ;; try and expand the reference
-         (let ((value (entity-ref ref doc-entities)))
+         (let ((value (or (when entity-callback
+                            (funcall entity-callback ref))
+                          (entity-ref ref))))
            (typecase value
 
              ;; unknown entity, just return the entity name
@@ -363,7 +364,7 @@
              (character (.ret value))
 
              ;; strings can have markup inside them, recursively decode
-             (string    (.ret (markup-decode value :entities doc-entities)))
+             (string    (.ret (markup-decode value entity-callback)))
 
              ;; everything else should princ to a value
              (otherwise (.ret (princ-to-string value))))))))
@@ -392,8 +393,8 @@
 
 ;;; ----------------------------------------------------
 
-(defun markup-decode (str &key entities)
+(defun markup-decode (str &optional entity-callback)
   "Decode a string, replacing &entity; references."
   (with-lexer (lexer 'markup-lexer str)
     (with-token-reader (next-token lexer)
-      (parse 'markup-parser next-token :initial-state entities))))
+      (parse 'markup-parser next-token :initial-state entity-callback))))

@@ -24,6 +24,7 @@
    ;; parsing predicates
    #:*markup-entity-char-p*
    #:*markup-entity-start-char-p*
+   #:*markup-entity-level*
 
    ;; encoding and decoding
    #:markup-encode
@@ -40,6 +41,11 @@
 
 (defparameter *markup-entity-char-p* 'alpha-char-p
   "Predicate for subsequent characters of an entity reference.")
+
+;;; ----------------------------------------------------
+
+(defparameter *markup-entity-level* 3
+  "The maximum depth to which entities will be expanded.")
 
 ;;; ----------------------------------------------------
 
@@ -395,6 +401,9 @@
 
 (defun markup-decode (str &optional entity-callback)
   "Decode a string, replacing &entity; references."
-  (with-lexer (lexer 'markup-lexer str)
-    (with-token-reader (next-token lexer)
-      (parse 'markup-parser next-token :initial-state entity-callback))))
+  (if (zerop *markup-entity-level*)
+      str
+    (let ((*markup-entity-level* (1- *markup-entity-level*)))
+      (with-lexer (lexer 'markup-lexer str)
+        (with-token-reader (next-token lexer)
+          (parse 'markup-parser next-token :initial-state entity-callback))))))

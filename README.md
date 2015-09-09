@@ -38,4 +38,18 @@ Simply set these to what you'd like them to be for your markup language and then
           (*markup-entity-char-p* 'xml-token-char-p))
       (markup-decode "&my-valid.xml:entity;"))
 
+## Preventing Infinite Expansion
+
+Markup languages typically allow for recursive expansion of entities. For example, in XML:
+
+    <!DOCTYPE doc [
+    <!ENTITY a "&b;">
+    <!ENTITY b "&c;">
+    <!ENTITY c "Hello, world!">
+    ]>
+
+If you were to use `&a;` in your document, it would expand to "Hello, world!" appropriately. However, malformed entity references can be used to exploit code. Circular entity references can cause infinite loops, and grossly expanding entities can allow for out of memory crashes.
+
+To help mitigate this, the `*markup-entity-level*` special variable allows you to cap the maximum level of expansion recursion that can take place. By default this is set to 3 - a good safe value.
+
 That's it!
